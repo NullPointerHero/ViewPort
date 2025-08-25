@@ -1,66 +1,66 @@
 # ViewPort Plugin
 
-Ein IntelliJ IDEA Plugin, das einen eingebetteten Web-Browser bereitstellt.
+An IntelliJ IDEA plugin that provides an embedded web browser.
 
 ## Features
 
-- **Tool Window**: Ein Tool Window auf der rechten Seite (wie der DB Browser)
-- **URL-Eingabe**: Textfeld oben für die URL-Eingabe
-- **Standard-URL**: Google.com wird standardmäßig geladen
-- **Kontext-Menü**: Rechtsklick-Menü zum Öffnen des Browsers
-- **Toolbar-Button**: Button in der Toolbar zum Öffnen des Browsers
-- **Vollständiger Browser**: JCEF (Chromium) für moderne Webseiten mit CSS und JavaScript
+- **Tool Window**: A tool window on the right side (like the DB Browser)
+- **URL Input**: Text field at the top for URL input
+- **Default URL**: Google.com is loaded by default
+- **Context Menu**: Right-click menu to open the browser
+- **Toolbar Button**: Button in the toolbar to open the browser
+- **Full Browser**: JCEF (Chromium) for modern websites with CSS and JavaScript
 
 ## Installation
 
-1. Bauen Sie das Plugin mit Gradle:
+1. Build the plugin with Gradle:
    ```bash
    ./gradlew buildPlugin
    ```
 
-2. Installieren Sie das Plugin in IntelliJ IDEA:
-   - Gehen Sie zu `File` → `Settings` → `Plugins`
-   - Klicken Sie auf das Zahnrad-Symbol → `Install Plugin from Disk`
-   - Wählen Sie die generierte `.zip` Datei aus dem `build/distributions` Ordner
+2. Install the plugin in IntelliJ IDEA:
+   - Go to `File` → `Settings` → `Plugins`
+   - Click on the gear icon → `Install Plugin from Disk`
+   - Select the generated `.zip` file from the `build/distributions` folder
 
-## Verwendung
+## Usage
 
-### Tool Window öffnen
-- Klicken Sie auf das ViewPort-Icon in der rechten Toolbar
-- Oder gehen Sie zu `View` → `Tool Windows` → `ViewPort Browser`
+### Open Tool Window
+- Click on the ViewPort icon in the right toolbar
+- Or go to `View` → `Tool Windows` → `ViewPort Browser`
 
-### Über Kontext-Menü
-- Rechtsklick im Projekt-Explorer
-- Wählen Sie "ViewPort Browser öffnen"
+### Via Context Menu
+- Right-click in the project explorer
+- Select "ViewPort Browser öffnen"
 
-### Über Toolbar
-- Klicken Sie auf den ViewPort-Button in der Toolbar
+### Via Toolbar
+- Click on the ViewPort button in the toolbar
 
-### URL eingeben
-- Geben Sie eine URL in das Textfeld oben ein
-- Drücken Sie Enter oder klicken Sie auf "Go"
+### Enter URL
+- Enter a URL in the text field at the top
+- Press Enter or click "Go"
 
 ### Navigation
-- Verwenden Sie die Standard-Browser-Navigation (Links klicken, etc.)
-- Der Browser unterstützt alle modernen Web-Features
+- Use standard browser navigation (clicking links, etc.)
+- The browser supports all modern web features
 
-## Technische Details
+## Technical Details
 
 - **Java Version**: 21
 - **Kotlin Version**: 2.1.0
 - **IntelliJ Platform**: 2025.1
 - **Browser Engine**: JCEF (Chromium Embedded Framework)
 
-## Entwicklung
+## Development
 
-### Projektstruktur
+### Project Structure
 ```
 src/main/kotlin/de/robin/alvarez/viewport/
-├── ViewPortBrowser.kt          # Haupt-Browser-Komponente mit JCEF
+├── ViewPortBrowser.kt          # Main browser component with JCEF
 ├── ViewPortToolWindowFactory.kt # Tool Window Factory
 └── actions/
-    ├── OpenBrowserAction.kt    # Kontext-Menü Action
-    └── ViewPortToolbarAction.kt # Toolbar Action
+    ├── OpenBrowserAction.kt    # Context menu action
+    └── ViewPortToolbarAction.kt # Toolbar action
 ```
 
 ### Build
@@ -73,13 +73,13 @@ src/main/kotlin/de/robin/alvarez/viewport/
 ./gradlew runIde
 ```
 
-## Hinweise
+## Notes
 
-- Das Plugin verwendet JCEF für vollständige Browser-Funktionalität
-- Moderne Webseiten mit CSS und JavaScript werden korrekt angezeigt
-- Alle Standard-Browser-Features sind verfügbar
-- Perfekt für Dokumentation, Stack Overflow, GitHub und andere Webseiten
+- The plugin uses JCEF for full browser functionality
+- Modern websites with CSS and JavaScript are displayed correctly
+- All standard browser features are available
+- Perfect for documentation, Stack Overflow, GitHub and other websites
 
-## Lizenz
+## License
 
-Dieses Projekt ist unter der MIT-Lizenz lizenziert.
+This project is licensed under the MIT License.
