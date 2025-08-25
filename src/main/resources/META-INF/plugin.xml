@@ -1,0 +1,53 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
+    <id>de.robin.alvarez.ViewPort</id>
+
+    <!-- Public plugin name should be written in Title Case.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-name -->
+    <name>ViewPort</name>
+
+    <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
+    <vendor url="https://www.yourcompany.com">Robin Alvarez</vendor>
+
+    <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
+    <description><![CDATA[
+    ViewPort - Ein eingebetteter Web-Browser für IntelliJ IDEA<br>
+    <em>Surfen Sie im Internet direkt in Ihrer IDE</em>
+  ]]></description>
+
+    <!-- Product and plugin compatibility requirements.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
+    <depends>com.intellij.modules.platform</depends>
+
+    <!-- Extension points defined by the plugin.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Tool Window für den Browser -->
+        <toolWindow id="ViewPort Browser" 
+                   secondary="true" 
+                   icon="AllIcons.General.Web" 
+                   anchor="right"
+                   factoryClass="de.robin.alvarez.viewport.ViewPortToolWindowFactory"/>
+    </extensions>
+
+    <actions>
+        <!-- Action für Kontext-Menü -->
+        <action id="ViewPort.OpenBrowser" 
+                class="de.robin.alvarez.viewport.actions.OpenBrowserAction" 
+                text="ViewPort Browser öffnen" 
+                description="Öffnet den ViewPort Web-Browser">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+        
+        <!-- Action für Toolbar -->
+        <action id="ViewPort.ToolbarAction" 
+                class="de.robin.alvarez.viewport.actions.ViewPortToolbarAction" 
+                text="ViewPort Browser" 
+                description="Öffnet den ViewPort Web-Browser">
+            <add-to-group group-id="NavBarToolBar" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>
