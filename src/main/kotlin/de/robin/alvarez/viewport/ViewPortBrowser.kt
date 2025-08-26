@@ -123,6 +123,7 @@ class ViewPortBrowser() : JPanel() {
             buttonPanel.add(forwardButton)
         }
         buttonPanel.add(reloadButton)
+        buttonPanel.add(menuButton)
         
         // URL-Feld
         urlField.text = "https://www.google.com"
@@ -482,6 +483,37 @@ class ViewPortBrowser() : JPanel() {
         }
     }
     
+    private fun openDevTools() {
+        try {
+            // DevTools in separatem Fenster öffnen
+            browser.openDevtools()
+        } catch (e: Exception) {
+            // Fallback: Versuche DevTools programmatisch zu öffnen
+            try {
+                val devTools = browser.cefBrowser.devTools
+                val devToolsBrowser = JBCefBrowser.createBuilder()
+                    .setCefBrowser(devTools)
+                    .setClient(browser.jbCefClient)
+                    .build()
+                
+                // DevTools in separatem Fenster anzeigen
+                val frame = JFrame("ViewPort DevTools")
+                frame.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
+                frame.size = Dimension(1200, 800)
+                frame.setLocationRelativeTo(null)
+                frame.add(devToolsBrowser.component)
+                frame.isVisible = true
+            } catch (ex: Exception) {
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Could not open DevTools: ${ex.message}",
+                    "DevTools Error",
+                    JOptionPane.ERROR_MESSAGE
+                )
+            }
+        }
+    }
+    
     private fun showBrowser() {
         isHistoryMode = false
         
@@ -497,6 +529,10 @@ class ViewPortBrowser() : JPanel() {
 
     private fun showOptionsMenu() {
         val menu = JPopupMenu()
+        
+        val devToolsItem = JMenuItem("DevTools")
+        devToolsItem.addActionListener { openDevTools() }
+        menu.add(devToolsItem)
         
         val historyItem = JMenuItem("History")
         historyItem.addActionListener { showHistory() }
