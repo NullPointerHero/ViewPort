@@ -8,7 +8,7 @@ import com.intellij.ui.content.ContentFactory
 class ViewPortToolWindowFactory : ToolWindowFactory {
     
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val browser = ViewPortBrowser(project)
+        val browser = ViewPortBrowser()
         val content = ContentFactory.getInstance().createContent(browser, "", false)
         toolWindow.contentManager.addContent(content)
     }
