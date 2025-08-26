@@ -61,6 +61,7 @@ class ViewPortBrowser() : JPanel() {
     private val historyList = JList<HistoryEntry>()
     private val historyScrollPane = JScrollPane(historyList)
     private val backToBrowserButton = JButton("← Back to Browser")
+    private val clearHistoryButton = JButton("Clear History")
     
     // Settings Panel Components
     private val settingsPanel = JPanel(BorderLayout())
@@ -302,10 +303,20 @@ class ViewPortBrowser() : JPanel() {
         titleLabel.font = titleLabel.font.deriveFont(Font.BOLD, 16f)
         headerPanel.add(titleLabel, BorderLayout.CENTER)
         
+        // Button Panel für Back und Clear
+        val buttonPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 5, 0))
+        
+        clearHistoryButton.addActionListener {
+            clearHistory()
+        }
+        
         backToBrowserButton.addActionListener {
             showBrowser()
         }
-        headerPanel.add(backToBrowserButton, BorderLayout.EAST)
+        
+        buttonPanel.add(clearHistoryButton)
+        buttonPanel.add(backToBrowserButton)
+        headerPanel.add(buttonPanel, BorderLayout.EAST)
         
         historyPanel.add(headerPanel, BorderLayout.NORTH)
         
@@ -452,6 +463,23 @@ class ViewPortBrowser() : JPanel() {
         add(historyPanel, BorderLayout.CENTER)
         revalidate()
         repaint()
+    }
+    
+    private fun clearHistory() {
+        val result = JOptionPane.showConfirmDialog(
+            this,
+            "Are you sure you want to clear all history?",
+            "Clear History",
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.QUESTION_MESSAGE
+        )
+        
+        if (result == JOptionPane.YES_OPTION) {
+            urlHistory.clear()
+            // History-Liste aktualisieren
+            val listModel = DefaultListModel<HistoryEntry>()
+            historyList.model = listModel
+        }
     }
     
     private fun showBrowser() {
