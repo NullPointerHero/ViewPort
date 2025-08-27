@@ -23,16 +23,14 @@
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-        <!-- Tool Window für den Browser -->
         <toolWindow id="ViewPort Browser" 
-                   secondary="true" 
-                   icon="AllIcons.General.Web" 
+                   secondary="true"
+                   icon="AllIcons.General.Web"
                    anchor="right"
                    factoryClass="de.robin.alvarez.viewport.ViewPortToolWindowFactory"/>
     </extensions>
 
     <actions>
-        <!-- Action für Kontext-Menü -->
         <action id="ViewPort.OpenBrowser" 
                 class="de.robin.alvarez.viewport.actions.OpenBrowserAction" 
                 text="ViewPort Browser öffnen" 
@@ -41,7 +39,6 @@
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
         </action>
         
-        <!-- Action für Toolbar -->
         <action id="ViewPort.ToolbarAction" 
                 class="de.robin.alvarez.viewport.actions.ViewPortToolbarAction" 
                 text="ViewPort Browser" 

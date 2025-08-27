@@ -1,8 +1,6 @@
 package de.robin.alvarez.viewport
 
-import com.intellij.openapi.project.Project
 import com.intellij.ui.components.JBTextField
-import com.intellij.util.ui.JBUI
 import com.intellij.ui.jcef.JBCefBrowser
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -52,18 +50,15 @@ class ViewPortBrowser() : JPanel() {
     private lateinit var urlCheckTimer: Timer
     private var isHistoryMode = false
     
-    // Settings
     private var recordHistory = true
     private var showForwardButton = true
     
-    // History Panel Components
     private val historyPanel = JPanel(BorderLayout())
     private val historyList = JList<HistoryEntry>()
     private val historyScrollPane = JScrollPane(historyList)
     private val backToBrowserButton = JButton("← Back to Browser")
     private val clearHistoryButton = JButton("Clear History")
     
-    // Settings Panel Components
     private val settingsPanel = JPanel(BorderLayout())
     private val backToBrowserFromSettingsButton = JButton("← Back to Browser")
     
@@ -78,22 +73,18 @@ class ViewPortBrowser() : JPanel() {
     private fun setupUI() {
         layout = BorderLayout()
         
-        // URL-Eingabe und Navigation
         val urlPanel = JPanel(BorderLayout())
         urlPanel.border = BorderFactory.createEmptyBorder(5, 5, 5, 5)
         
-        // Navigation-Buttons
         val buttonPanel = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0))
         backButton.toolTipText = "Back"
         forwardButton.toolTipText = "Forward"
         reloadButton.toolTipText = "Reload"
         menuButton.toolTipText = "Options"
         
-        // Navigation implementieren mit nativen JCEF-Methoden
         backButton.addActionListener(object : ActionListener {
             override fun actionPerformed(e: ActionEvent) {
                 goBack()
-                // Fokus auf Browser setzen
                 browser.component.requestFocusInWindow()
             }
         })
@@ -101,7 +92,6 @@ class ViewPortBrowser() : JPanel() {
         forwardButton.addActionListener(object : ActionListener {
             override fun actionPerformed(e: ActionEvent) {
                 goForward()
-                // Fokus auf Browser setzen
                 browser.component.requestFocusInWindow()
             }
         })
@@ -109,7 +99,6 @@ class ViewPortBrowser() : JPanel() {
         reloadButton.addActionListener(object : ActionListener {
             override fun actionPerformed(e: ActionEvent) {
                 reload()
-                // Fokus auf Browser setzen
                 browser.component.requestFocusInWindow()
             }
         })
@@ -125,45 +114,36 @@ class ViewPortBrowser() : JPanel() {
         buttonPanel.add(reloadButton)
         buttonPanel.add(menuButton)
         
-        // URL-Feld
         urlField.text = "https://www.google.com"
         
-        // URL-Feld Selektion beim Klick (nur beim ersten Klick)
         urlField.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 urlFieldClickCount++
                 if (urlFieldClickCount == 1) {
-                    // Erster Klick: Alles selektieren
                     urlField.selectAll()
                 } else {
-                    // Zweiter Klick: Normaler Cursor-Modus
                     urlFieldClickCount = 0
                 }
             }
         })
         
-        // URL-Feld Selektion beim Fokus
         urlField.addFocusListener(object : FocusAdapter() {
             override fun focusGained(e: FocusEvent) {
-                // Nur beim ersten Fokus alles selektieren
                 if (urlFieldClickCount == 0) {
                     urlField.selectAll()
                 }
             }
         })
         
-        // Go-Button
         val goButton = JButton("Go")
         goButton.addActionListener { 
             navigateToUrl()
-            // Fokus auf Browser setzen
             browser.component.requestFocusInWindow()
         }
         
         urlPanel.add(buttonPanel, BorderLayout.WEST)
         urlPanel.add(urlField, BorderLayout.CENTER)
         
-        // Go-Button und Menu-Button in einem Panel rechts
         val rightPanel = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0))
         rightPanel.add(goButton)
         rightPanel.add(menuButton)
@@ -172,31 +152,25 @@ class ViewPortBrowser() : JPanel() {
         add(urlPanel, BorderLayout.NORTH)
         add(browser.component, BorderLayout.CENTER)
         
-        // Enter-Taste im URL-Feld
         urlField.addKeyListener(object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
                 if (e.keyCode == KeyEvent.VK_ENTER) {
                     navigateToUrl()
-                    // Fokus auf Browser setzen
                     browser.component.requestFocusInWindow()
                 }
             }
         })
         
-        // URL-Monitoring starten
         startUrlMonitoring()
         
-        // Button-States initialisieren
         updateButtonStates()
     }
     
     private fun setupBrowser() {
-        // Standard-URL laden
         loadUrl("https://www.google.com")
     }
     
     private fun startUrlMonitoring() {
-        // Timer, der alle 500ms die URL überprüft
         urlCheckTimer = Timer(500) {
             try {
                 val currentUrl = browser.cefBrowser.url
@@ -206,10 +180,8 @@ class ViewPortBrowser() : JPanel() {
                     addToHistory(currentUrl)
                 }
                 
-                // Update Button-Status basierend auf nativen JCEF-Methoden
                 updateButtonStates()
             } catch (e: Exception) {
-                // Ignore errors
             }
         }
         urlCheckTimer.start()
@@ -234,11 +206,9 @@ class ViewPortBrowser() : JPanel() {
             urlField.text = urlString
             lastKnownUrl = urlString
             
-            // URL zur Historie hinzufügen (für zukünftige Verlaufsanzeige)
             addToHistory(urlString)
             
         } catch (e: Exception) {
-            // Bei Fehlern zeigen wir eine einfache HTML-Seite
             val errorHtml = """
                 <html>
                 <head><title>ViewPort Browser - Fehler</title></head>
@@ -255,34 +225,28 @@ class ViewPortBrowser() : JPanel() {
     }
     
     private fun addToHistory(url: String) {
-        // Nur zur Historie hinzufügen wenn recordHistory aktiviert ist
         if (!recordHistory) return
         
-        // Füge neue URL am Ende hinzu
         urlHistory.add(HistoryEntry(url, LocalDateTime.now()))
         
-        // Begrenze die Historie auf maxHistorySize URLs
         if (urlHistory.size > maxHistorySize) {
-            urlHistory.removeAt(0) // Entferne die älteste URL
+            urlHistory.removeAt(0)
         }
     }
     
     private fun goBack() {
-        // Verwende native JCEF-Methode
         if (browser.cefBrowser.canGoBack()) {
             browser.cefBrowser.goBack()
         }
     }
     
     private fun goForward() {
-        // Verwende native JCEF-Methode
         if (browser.cefBrowser.canGoForward()) {
             browser.cefBrowser.goForward()
         }
     }
     
     private fun reload() {
-        // Verwende native JCEF-Methode
         browser.cefBrowser.reload()
     }
     
@@ -292,11 +256,9 @@ class ViewPortBrowser() : JPanel() {
     }
     
     private fun setupHistoryUI() {
-        // History Panel Setup
         historyPanel.layout = BorderLayout()
         historyPanel.border = BorderFactory.createEmptyBorder(10, 15, 10, 15)
         
-        // Header mit Titel und Back-Button
         val headerPanel = JPanel(BorderLayout())
         headerPanel.border = BorderFactory.createEmptyBorder(10, 0, 15, 0)
         
@@ -304,7 +266,6 @@ class ViewPortBrowser() : JPanel() {
         titleLabel.font = titleLabel.font.deriveFont(Font.BOLD, 16f)
         headerPanel.add(titleLabel, BorderLayout.CENTER)
         
-        // Button Panel für Back und Clear
         val buttonPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 5, 0))
         
         clearHistoryButton.addActionListener {
@@ -321,7 +282,6 @@ class ViewPortBrowser() : JPanel() {
         
         historyPanel.add(headerPanel, BorderLayout.NORTH)
         
-        // History List Setup mit Custom Renderer für Hover-Effekte
         historyList.selectionMode = ListSelectionModel.SINGLE_SELECTION
         historyList.cellRenderer = object : DefaultListCellRenderer() {
             override fun getListCellRendererComponent(
@@ -337,13 +297,12 @@ class ViewPortBrowser() : JPanel() {
                     component.text = value.getDisplayText()
                     component.border = BorderFactory.createEmptyBorder(8, 12, 8, 12)
                     
-                    // Transparenter Hintergrund für Theme-Anpassung
                     if (isSelected) {
                         component.foreground = Color.WHITE
                         component.background = Color.BLUE
                     } else {
                         component.foreground = Color.WHITE
-                        component.background = Color(0, 0, 0, 0) // Transparent
+                        component.background = Color(0, 0, 0, 0)
                         component.isOpaque = false
                     }
                 }
@@ -360,7 +319,6 @@ class ViewPortBrowser() : JPanel() {
             }
         }
         
-        // Mouse-Listener für Hover-Effekte (vereinfacht)
         historyList.addMouseListener(object : MouseAdapter() {
             override fun mouseEntered(e: MouseEvent) {
                 historyList.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
@@ -377,11 +335,9 @@ class ViewPortBrowser() : JPanel() {
     }
     
     private fun setupSettingsUI() {
-        // Settings Panel Setup
         settingsPanel.layout = BorderLayout()
         settingsPanel.border = BorderFactory.createEmptyBorder(5, 15, 5, 15)
         
-        // Header mit Titel und Back-Button
         val headerPanel = JPanel(BorderLayout())
         headerPanel.border = BorderFactory.createEmptyBorder(0, 0, 10, 0)
         
@@ -396,12 +352,10 @@ class ViewPortBrowser() : JPanel() {
         
         settingsPanel.add(headerPanel, BorderLayout.NORTH)
         
-        // Settings Content als vertikale Liste
         val contentPanel = JPanel()
         contentPanel.layout = BoxLayout(contentPanel, BoxLayout.Y_AXIS)
         contentPanel.border = BorderFactory.createEmptyBorder(0, 0, 0, 0)
         
-        // History Recording Toggle
         val historyPanel = JPanel(BorderLayout())
         historyPanel.maximumSize = Dimension(Int.MAX_VALUE, 30)
         historyPanel.preferredSize = Dimension(Int.MAX_VALUE, 30)
@@ -420,7 +374,6 @@ class ViewPortBrowser() : JPanel() {
         contentPanel.add(historyPanel)
         contentPanel.add(Box.createVerticalStrut(8))
         
-        // Forward Button Toggle
         val forwardPanel = JPanel(BorderLayout())
         forwardPanel.maximumSize = Dimension(Int.MAX_VALUE, 30)
         forwardPanel.preferredSize = Dimension(Int.MAX_VALUE, 30)
@@ -433,7 +386,6 @@ class ViewPortBrowser() : JPanel() {
         forwardToggle.isSelected = showForwardButton
         forwardToggle.addActionListener {
             showForwardButton = forwardToggle.isSelected
-            // UI sofort aktualisieren wenn Einstellung geändert wird
             if (!isHistoryMode) {
                 showBrowser()
             }
@@ -442,7 +394,6 @@ class ViewPortBrowser() : JPanel() {
         
         contentPanel.add(forwardPanel)
         
-        // Füge flexible Box hinzu um die Liste nach oben zu drücken
         contentPanel.add(Box.createVerticalGlue())
         
         settingsPanel.add(contentPanel, BorderLayout.CENTER)
@@ -451,7 +402,6 @@ class ViewPortBrowser() : JPanel() {
     private fun showHistory() {
         isHistoryMode = true
         
-        // History-Liste mit neuesten URLs oben aktualisieren
         val reversedHistory = urlHistory.reversed()
         val listModel = DefaultListModel<HistoryEntry>()
         reversedHistory.forEach { entry ->
@@ -459,7 +409,6 @@ class ViewPortBrowser() : JPanel() {
         }
         historyList.model = listModel
         
-        // Browser ausblenden, History anzeigen
         removeAll()
         add(historyPanel, BorderLayout.CENTER)
         revalidate()
@@ -477,7 +426,6 @@ class ViewPortBrowser() : JPanel() {
         
         if (result == JOptionPane.YES_OPTION) {
             urlHistory.clear()
-            // History-Liste aktualisieren
             val listModel = DefaultListModel<HistoryEntry>()
             historyList.model = listModel
         }
@@ -485,10 +433,8 @@ class ViewPortBrowser() : JPanel() {
     
     private fun openDevTools() {
         try {
-            // DevTools in separatem Fenster öffnen
             browser.openDevtools()
         } catch (e: Exception) {
-            // Fallback: Versuche DevTools programmatisch zu öffnen
             try {
                 val devTools = browser.cefBrowser.devTools
                 val devToolsBrowser = JBCefBrowser.createBuilder()
@@ -496,7 +442,6 @@ class ViewPortBrowser() : JPanel() {
                     .setClient(browser.jbCefClient)
                     .build()
                 
-                // DevTools in separatem Fenster anzeigen
                 val frame = JFrame("ViewPort DevTools")
                 frame.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
                 frame.size = Dimension(1200, 800)
@@ -517,13 +462,11 @@ class ViewPortBrowser() : JPanel() {
     private fun showBrowser() {
         isHistoryMode = false
         
-        // History ausblenden, Browser anzeigen
         removeAll()
         setupUI()
         revalidate()
         repaint()
         
-        // Fokus auf Browser setzen
         browser.component.requestFocusInWindow()
     }
 
@@ -542,7 +485,6 @@ class ViewPortBrowser() : JPanel() {
         settingsItem.addActionListener { showSettings() }
         menu.add(settingsItem)
         
-        // Berechne die korrekte Position des Buttons relativ zum Hauptpanel
         val rightPanel = menuButton.parent
         val urlPanel = rightPanel?.parent
         val buttonLocation = menuButton.location
@@ -558,7 +500,6 @@ class ViewPortBrowser() : JPanel() {
     private fun showSettings() {
         isHistoryMode = false
         
-        // Settings anzeigen
         removeAll()
         add(settingsPanel, BorderLayout.CENTER)
         revalidate()
@@ -569,7 +510,6 @@ class ViewPortBrowser() : JPanel() {
         return urlField.text
     }
     
-    // Getter für die Historie (für zukünftige Verlaufsanzeige)
     fun getUrlHistory(): List<HistoryEntry> {
         return urlHistory.toList()
     }
