@@ -1,7 +1,9 @@
 package de.robin.alvarez.viewport
 
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.ui.components.JBTextField
+import com.intellij.util.ui.JBUI
 import de.robin.alvarez.viewport.bookmarks.CreateBookmarkDialog
 import de.robin.alvarez.viewport.bookmarks.ViewPortBookmarkService
 import de.robin.alvarez.viewport.history.ViewPortHistoryService
@@ -9,13 +11,19 @@ import de.robin.alvarez.viewport.settings.DefaultSearchEngine
 import de.robin.alvarez.viewport.settings.ViewPortSettingsService
 import com.intellij.ui.jcef.JBCefBrowser
 import java.awt.BorderLayout
+import java.awt.CardLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
+import java.awt.Graphics
+import java.awt.Graphics2D
 import java.awt.Rectangle
+import java.awt.RenderingHints
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.ActionEvent
 import java.awt.event.ActionListener
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
 import java.awt.event.MouseAdapter
@@ -26,6 +34,7 @@ import java.awt.Font
 import java.awt.Color
 import java.awt.Component
 import java.awt.Cursor
+import java.net.URI
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -63,22 +72,60 @@ private class BookmarkStripPanel : JPanel(), Scrollable {
         if (orientation == SwingConstants.HORIZONTAL) 48 else 16
 }
 
+/** Tab chip with rounded background and vertically centered label + close control. */
+private class RoundedTabCell(
+    private val fillColor: Color,
+    private val cornerArc: Int,
+) : JPanel() {
+    init {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        isOpaque = false
+        border = JBUI.Borders.empty(5, 8, 5, 6)
+    }
+
+    override fun paintComponent(g: Graphics) {
+        val g2 = g.create() as Graphics2D
+        try {
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+            g2.color = fillColor
+            val w = width
+            val h = height
+            if (w > 0 && h > 0) {
+                g2.fillRoundRect(0, 0, w - 1, h - 1, cornerArc, cornerArc)
+            }
+        } finally {
+            g2.dispose()
+        }
+        super.paintComponent(g)
+    }
+}
+
 private data class BookmarkListRow(val index: Int, val name: String, val url: String) {
     fun displayLine(): String =
         if (name.isNotEmpty()) "$name — $url" else url.ifEmpty { "(empty)" }
 }
 
-class ViewPortBrowser(private val project: Project) : JPanel() {
+class ViewPortBrowser(private val project: Project) : JPanel(), Disposable {
 
     private val bookmarkService = ViewPortBookmarkService.getInstance()
     private val historyService = ViewPortHistoryService.getInstance()
     private val settingsService = ViewPortSettingsService.getInstance()
+    private val tabs = mutableListOf<ViewPortBrowserTab>()
+    private var selectedTabIndex = 0
     private lateinit var northStack: JPanel
+    private lateinit var northColumn: JPanel
     private lateinit var bookmarkScrollPane: JScrollPane
     private lateinit var bookmarksFlowPanel: BookmarkStripPanel
+    private lateinit var browserCardPanel: JPanel
+    private lateinit var browserCardLayout: CardLayout
+    private lateinit var tabStripPanel: BookmarkStripPanel
+    private lateinit var tabScrollPane: JScrollPane
+    /** Nur Tab-Zeile; Zusatz für horizontale Scrollbar kommt nur bei sichtbarer Scrollbar dazu. */
+    private var tabStripRowHeightPx = 0
+    private var tabScrollbarReservePx = 0
+    private lateinit var newTabButton: JButton
 
     private val urlField = JBTextField()
-    private val browser: JBCefBrowser = JBCefBrowser()
     private val backButton = JButton(AllIcons.Actions.Back)
     private val forwardButton = JButton(AllIcons.Actions.Forward)
     private val reloadButton = JButton(AllIcons.Actions.Refresh)
@@ -107,98 +154,146 @@ class ViewPortBrowser(private val project: Project) : JPanel() {
     private val settingsPanel = JPanel(BorderLayout())
     private val backToBrowserFromSettingsButton = JButton("← Back to Browser")
     private lateinit var searchEngineCombo: JComboBox<DefaultSearchEngine>
-    
+    private lateinit var showTabBarToggle: JCheckBox
+    private lateinit var showBookmarksBarToggle: JCheckBox
+    private var urlFieldListenersAttached = false
+    private var mainToolbarListenersAttached = false
+
     init {
+        tabs.add(ViewPortBrowserTab.create())
         setupUI()
-        setupBrowser()
+        loadUrl(settingsService.homePageUrl())
         setupHistoryUI()
         setupBookmarksManagerUI()
         setupSettingsUI()
         startUrlMonitoring()
     }
+
+    private fun activeBrowser(): JBCefBrowser =
+        tabs[selectedTabIndex.coerceIn(0, tabs.lastIndex)].jbBrowser
     
     private fun setupUI() {
         layout = BorderLayout()
 
         northStack = JPanel(BorderLayout())
 
+        val showTabs = settingsService.isShowTabBar()
+        val showBm = settingsService.isShowBookmarksBar()
+
+        northColumn = JPanel(BorderLayout())
+
+        val scrollbarThickness = UIManager.getInt("ScrollBar.width").takeIf { it > 0 } ?: JBUI.scale(14)
+
+        tabStripPanel = BookmarkStripPanel()
+        tabScrollPane = JScrollPane(
+            tabStripPanel,
+            ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
+            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED,
+        )
+        tabScrollPane.border = BorderFactory.createEmptyBorder(0, 8, 0, 8)
+        tabStripRowHeightPx = JBUI.scale(34)
+        tabScrollbarReservePx = scrollbarThickness + 4
+        tabScrollPane.preferredSize = Dimension(0, tabStripRowHeightPx)
+        tabScrollPane.minimumSize = Dimension(80, tabStripRowHeightPx)
+
+        val tabHsbSync = object : ComponentAdapter() {
+            override fun componentResized(e: ComponentEvent) {
+                SwingUtilities.invokeLater { syncTabStripScrollPaneHeight() }
+            }
+
+            override fun componentShown(e: ComponentEvent) {
+                SwingUtilities.invokeLater { syncTabStripScrollPaneHeight() }
+            }
+
+            override fun componentHidden(e: ComponentEvent) {
+                SwingUtilities.invokeLater { syncTabStripScrollPaneHeight() }
+            }
+        }
+        tabScrollPane.horizontalScrollBar.addComponentListener(tabHsbSync)
+        tabScrollPane.viewport.addComponentListener(tabHsbSync)
+
+        newTabButton = JButton(AllIcons.General.Add)
+        newTabButton.toolTipText = "New tab"
+        newTabButton.addActionListener { addNewTab() }
+        menuButton.toolTipText = "Options"
+
+        if (showTabs) {
+            val headerPanel = JPanel(BorderLayout())
+            headerPanel.border = JBUI.Borders.empty(4, 8, 4, 8)
+            headerPanel.add(tabScrollPane, BorderLayout.CENTER)
+            val headerEast = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0))
+            headerEast.add(newTabButton)
+            headerEast.add(menuButton)
+            headerPanel.add(headerEast, BorderLayout.EAST)
+            northColumn.add(headerPanel, BorderLayout.NORTH)
+        }
+
         val urlPanel = JPanel(BorderLayout())
         urlPanel.border = BorderFactory.createEmptyBorder(5, 5, 5, 5)
-        
+
         val buttonPanel = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0))
         backButton.toolTipText = "Back"
         forwardButton.toolTipText = "Forward"
         reloadButton.toolTipText = "Reload"
-        menuButton.toolTipText = "Options"
-        
-        backButton.addActionListener(object : ActionListener {
-            override fun actionPerformed(e: ActionEvent) {
-                goBack()
-                browser.component.requestFocusInWindow()
-            }
-        })
-        
-        forwardButton.addActionListener(object : ActionListener {
-            override fun actionPerformed(e: ActionEvent) {
-                goForward()
-                browser.component.requestFocusInWindow()
-            }
-        })
-        
-        reloadButton.addActionListener(object : ActionListener {
-            override fun actionPerformed(e: ActionEvent) {
-                reload()
-                browser.component.requestFocusInWindow()
-            }
-        })
-        
-        menuButton.addActionListener {
-            showOptionsMenu()
+
+        if (!mainToolbarListenersAttached) {
+            mainToolbarListenersAttached = true
+            backButton.addActionListener(object : ActionListener {
+                override fun actionPerformed(e: ActionEvent) {
+                    goBack()
+                    activeBrowser().component.requestFocusInWindow()
+                }
+            })
+
+            forwardButton.addActionListener(object : ActionListener {
+                override fun actionPerformed(e: ActionEvent) {
+                    goForward()
+                    activeBrowser().component.requestFocusInWindow()
+                }
+            })
+
+            reloadButton.addActionListener(object : ActionListener {
+                override fun actionPerformed(e: ActionEvent) {
+                    reload()
+                    activeBrowser().component.requestFocusInWindow()
+                }
+            })
+
+            menuButton.addActionListener { showOptionsMenu() }
         }
-        
+
         buttonPanel.add(backButton)
         if (showForwardButton) {
             buttonPanel.add(forwardButton)
         }
         buttonPanel.add(reloadButton)
-        buttonPanel.add(menuButton)
-        
-        urlField.text = settingsService.homePageUrl()
-        
-        urlField.addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) {
-                urlFieldClickCount++
-                if (urlFieldClickCount == 1) {
-                    urlField.selectAll()
-                } else {
-                    urlFieldClickCount = 0
-                }
-            }
-        })
-        
-        urlField.addFocusListener(object : FocusAdapter() {
-            override fun focusGained(e: FocusEvent) {
-                if (urlFieldClickCount == 0) {
-                    urlField.selectAll()
-                }
-            }
-        })
-        
+
+        syncUrlFieldFromActiveTab()
+
+        attachUrlFieldListenersOnce()
+
         val goButton = JButton("Go")
-        goButton.addActionListener { 
+        goButton.addActionListener {
             navigateToUrl()
-            browser.component.requestFocusInWindow()
+            activeBrowser().component.requestFocusInWindow()
         }
-        
+
         urlPanel.add(buttonPanel, BorderLayout.WEST)
         urlPanel.add(urlField, BorderLayout.CENTER)
 
         val rightPanel = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0))
         rightPanel.add(goButton)
-        rightPanel.add(menuButton)
+        if (!showTabs) {
+            rightPanel.add(newTabButton)
+            rightPanel.add(menuButton)
+        }
         urlPanel.add(rightPanel, BorderLayout.EAST)
 
-        northStack.add(urlPanel, BorderLayout.NORTH)
+        if (showTabs) {
+            northColumn.add(urlPanel, BorderLayout.CENTER)
+        } else {
+            northColumn.add(urlPanel, BorderLayout.NORTH)
+        }
 
         bookmarksFlowPanel = BookmarkStripPanel()
         bookmarkScrollPane = JScrollPane(
@@ -210,30 +305,238 @@ class ViewPortBrowser(private val project: Project) : JPanel() {
         bookmarkScrollPane.horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED
         bookmarkScrollPane.verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER
         val stripRowHeight = 34
-        val scrollbarThickness = UIManager.getInt("ScrollBar.width").takeIf { it > 0 } ?: 14
         val stripTotalHeight = stripRowHeight + scrollbarThickness + 4
         bookmarkScrollPane.preferredSize = Dimension(0, stripTotalHeight)
         bookmarkScrollPane.minimumSize = Dimension(0, stripTotalHeight)
 
-        add(northStack, BorderLayout.NORTH)
-        add(browser.component, BorderLayout.CENTER)
+        if (showBm) {
+            northColumn.add(bookmarkScrollPane, BorderLayout.SOUTH)
+        }
 
+        northStack.add(northColumn, BorderLayout.NORTH)
+
+        browserCardLayout = CardLayout()
+        browserCardPanel = JPanel(browserCardLayout)
+        tabs.forEach { tab ->
+            browserCardPanel.add(tab.jbBrowser.component, tab.id)
+        }
+        if (tabs.isNotEmpty()) {
+            browserCardLayout.show(browserCardPanel, tabs[selectedTabIndex.coerceIn(0, tabs.lastIndex)].id)
+        }
+
+        add(northStack, BorderLayout.NORTH)
+        add(browserCardPanel, BorderLayout.CENTER)
+
+        refreshTabStrip()
         refreshBookmarksBar()
-        
-        urlField.addKeyListener(object : KeyAdapter() {
-            override fun keyPressed(e: KeyEvent) {
-                if (e.keyCode == KeyEvent.VK_ENTER) {
-                    navigateToUrl()
-                    browser.component.requestFocusInWindow()
+
+        updateButtonStates()
+        SwingUtilities.invokeLater { syncTabStripScrollPaneHeight() }
+    }
+
+    /** Reserviert Zusatzhöhe für die horizontale Tab-Scrollbar nur, wenn sie sichtbar ist. */
+    private fun syncTabStripScrollPaneHeight() {
+        if (!::tabScrollPane.isInitialized || tabStripRowHeightPx <= 0) return
+        if (!settingsService.isShowTabBar()) return
+        val hsb = tabScrollPane.horizontalScrollBar
+        val total = tabStripRowHeightPx + if (hsb.isVisible) tabScrollbarReservePx else 0
+        val cur = tabScrollPane.preferredSize.height
+        if (cur == total) return
+        tabScrollPane.preferredSize = Dimension(0, total)
+        tabScrollPane.minimumSize = Dimension(80, total)
+        tabScrollPane.revalidate()
+        tabScrollPane.parent?.revalidate()
+    }
+
+    private fun attachUrlFieldListenersOnce() {
+        if (urlFieldListenersAttached) return
+        urlFieldListenersAttached = true
+
+        urlField.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                urlFieldClickCount++
+                if (urlFieldClickCount == 1) {
+                    urlField.selectAll()
+                } else {
+                    urlFieldClickCount = 0
                 }
             }
         })
 
+        urlField.addFocusListener(object : FocusAdapter() {
+            override fun focusGained(e: FocusEvent) {
+                if (urlFieldClickCount == 0) {
+                    urlField.selectAll()
+                }
+            }
+        })
+
+        urlField.addKeyListener(object : KeyAdapter() {
+            override fun keyPressed(e: KeyEvent) {
+                if (e.keyCode == KeyEvent.VK_ENTER) {
+                    navigateToUrl()
+                    activeBrowser().component.requestFocusInWindow()
+                }
+            }
+        })
+    }
+
+    private fun syncUrlFieldFromActiveTab() {
+        if (tabs.isEmpty()) return
+        val url = try {
+            activeBrowser().cefBrowser.url?.takeIf { it.isNotEmpty() } ?: ""
+        } catch (_: Exception) {
+            ""
+        }
+        lastKnownUrl = url
+        urlField.text = url.ifEmpty { settingsService.homePageUrl() }
+    }
+
+    private fun refreshTabStrip() {
+        if (!settingsService.isShowTabBar() || !::tabStripPanel.isInitialized) return
+        tabStripPanel.removeAll()
+        tabs.forEachIndexed { index, tab ->
+            val selected = index == selectedTabIndex
+            val bg =
+                if (selected) UIManager.getColor("TabbedPane.selected") ?: Color(57, 110, 175)
+                else (UIManager.getColor("Panel.background") ?: Color.LIGHT_GRAY)
+            val fg = foregroundForTabBackground(bg)
+
+            val arc = JBUI.scale(10).coerceAtLeast(8)
+            val cell = RoundedTabCell(bg, arc)
+
+            val row = JPanel(FlowLayout(FlowLayout.LEFT, 2, 0))
+            row.isOpaque = false
+
+            val titleLabel = JLabel(tab.displayTitle)
+            titleLabel.foreground = fg
+            titleLabel.isOpaque = false
+            titleLabel.alignmentY = Component.CENTER_ALIGNMENT
+            titleLabel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            titleLabel.addMouseListener(object : MouseAdapter() {
+                override fun mouseClicked(e: MouseEvent) {
+                    selectTab(index)
+                }
+            })
+            row.add(titleLabel)
+
+            // JLabel statt JButton: gleiche vertikale Metrik wie der Titel (× wirkt bei JButton oft zu tief).
+            val closeLabel = JLabel("×")
+            closeLabel.font = closeLabel.font.deriveFont(Font.BOLD, 12f)
+            closeLabel.foreground = fg
+            closeLabel.isOpaque = false
+            closeLabel.verticalAlignment = SwingConstants.CENTER
+            closeLabel.horizontalAlignment = SwingConstants.CENTER
+            val rowH = titleLabel.preferredSize.height.coerceAtLeast(JBUI.scale(16))
+            closeLabel.preferredSize = Dimension(JBUI.scale(18), rowH)
+            closeLabel.minimumSize = closeLabel.preferredSize
+            closeLabel.maximumSize = Dimension(JBUI.scale(22), rowH)
+            closeLabel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            closeLabel.alignmentY = Component.CENTER_ALIGNMENT
+            closeLabel.toolTipText = "Close tab"
+            closeLabel.addMouseListener(object : MouseAdapter() {
+                override fun mouseClicked(e: MouseEvent) {
+                    closeTabAt(index)
+                }
+            })
+            row.add(closeLabel)
+
+            row.alignmentX = Component.LEFT_ALIGNMENT
+            cell.add(Box.createVerticalGlue())
+            cell.add(row)
+            cell.add(Box.createVerticalGlue())
+
+            tabStripPanel.add(cell)
+            if (index < tabs.lastIndex) {
+                tabStripPanel.add(Box.createHorizontalStrut(4))
+            }
+        }
+        tabStripPanel.revalidate()
+        tabStripPanel.repaint()
+        SwingUtilities.invokeLater { syncTabStripScrollPaneHeight() }
+    }
+
+    private fun selectTab(index: Int) {
+        if (index !in tabs.indices) return
+        selectedTabIndex = index
+        browserCardLayout.show(browserCardPanel, tabs[index].id)
+        syncUrlFieldFromActiveTab()
+        refreshTabStrip()
         updateButtonStates()
+        activeBrowser().component.requestFocusInWindow()
+    }
+
+    private fun addNewTab() {
+        val tab = ViewPortBrowserTab.create()
+        tabs.add(tab)
+        browserCardPanel.add(tab.jbBrowser.component, tab.id)
+        selectedTabIndex = tabs.lastIndex
+        browserCardLayout.show(browserCardPanel, tab.id)
+        refreshTabStrip()
+        loadUrl(settingsService.homePageUrl())
+        updateButtonStates()
+        activeBrowser().component.requestFocusInWindow()
+    }
+
+    private fun closeTabAt(index: Int) {
+        if (index !in tabs.indices) return
+        if (tabs.size == 1) {
+            loadUrl(settingsService.homePageUrl())
+            return
+        }
+        val removed = tabs.removeAt(index)
+        browserCardPanel.remove(removed.jbBrowser.component)
+        removed.dispose()
+        if (selectedTabIndex >= tabs.size) {
+            selectedTabIndex = tabs.lastIndex
+        } else if (index < selectedTabIndex) {
+            selectedTabIndex--
+        }
+        browserCardLayout.show(browserCardPanel, tabs[selectedTabIndex].id)
+        browserCardPanel.revalidate()
+        syncUrlFieldFromActiveTab()
+        refreshTabStrip()
+        updateButtonStates()
+        activeBrowser().component.requestFocusInWindow()
+    }
+
+    private fun updateActiveTabTitleFromUrl(url: String) {
+        if (tabs.isEmpty() || !::tabStripPanel.isInitialized) return
+        val tab = tabs[selectedTabIndex.coerceIn(0, tabs.lastIndex)]
+        tab.displayTitle = titleFromUrl(url)
+        refreshTabStrip()
+    }
+
+    private fun titleFromUrl(url: String): String {
+        if (url.isEmpty()) return "New tab"
+        return try {
+            val host = URI(url).host
+            if (host.isNullOrBlank()) url.take(24) else host.take(28)
+        } catch (_: Exception) {
+            url.take(24)
+        }
+    }
+
+    /** Readable label/close color on top of the given tab background (light and dark themes). */
+    private fun foregroundForTabBackground(bg: Color): Color {
+        val r = bg.red / 255.0
+        val g = bg.green / 255.0
+        val b = bg.blue / 255.0
+        val lum = 0.299 * r + 0.587 * g + 0.114 * b
+        return if (lum > 0.55) Color(35, 35, 35) else Color.WHITE
     }
 
     private fun refreshBookmarksBar() {
         if (!::bookmarksFlowPanel.isInitialized || !::northStack.isInitialized || !::bookmarkScrollPane.isInitialized) return
+        if (!settingsService.isShowBookmarksBar()) {
+            bookmarkScrollPane.parent?.remove(bookmarkScrollPane)
+            if (::northColumn.isInitialized) {
+                northColumn.revalidate()
+                northColumn.repaint()
+            }
+            return
+        }
+
         bookmarksFlowPanel.removeAll()
 
         val engine = settingsService.getSearchEngine()
@@ -243,7 +546,7 @@ class ViewPortBrowser(private val project: Project) : JPanel() {
         homeButton.alignmentY = 0.5f
         homeButton.addActionListener {
             loadUrl(settingsService.homePageUrl())
-            browser.component.requestFocusInWindow()
+            activeBrowser().component.requestFocusInWindow()
         }
         bookmarksFlowPanel.add(homeButton)
 
@@ -260,7 +563,7 @@ class ViewPortBrowser(private val project: Project) : JPanel() {
             chip.addActionListener {
                 val url = entry.url?.takeIf { it.isNotEmpty() } ?: return@addActionListener
                 loadUrl(url)
-                browser.component.requestFocusInWindow()
+                activeBrowser().component.requestFocusInWindow()
             }
             bookmarksFlowPanel.add(chip)
             if (index < entries.lastIndex) {
@@ -270,27 +573,28 @@ class ViewPortBrowser(private val project: Project) : JPanel() {
         bookmarksFlowPanel.revalidate()
         bookmarksFlowPanel.repaint()
 
-        if (bookmarkScrollPane.parent != northStack) {
-            northStack.add(bookmarkScrollPane, BorderLayout.SOUTH)
+        if (::northColumn.isInitialized && bookmarkScrollPane.parent != northColumn) {
+            northColumn.add(bookmarkScrollPane, BorderLayout.SOUTH)
         }
-        northStack.revalidate()
-        northStack.repaint()
-    }
-    
-    private fun setupBrowser() {
-        loadUrl(settingsService.homePageUrl())
+        if (::northColumn.isInitialized) {
+            northColumn.revalidate()
+            northColumn.repaint()
+        }
     }
     
     private fun startUrlMonitoring() {
         urlCheckTimer = Timer(500) {
             try {
-                val currentUrl = browser.cefBrowser.url
-                if (currentUrl != lastKnownUrl && currentUrl.isNotEmpty()) {
-                    lastKnownUrl = currentUrl
-                    urlField.text = currentUrl
-                    addToHistory(currentUrl)
+                if (tabs.isNotEmpty()) {
+                    val currentUrl = activeBrowser().cefBrowser.url
+                    if (currentUrl != lastKnownUrl && currentUrl.isNotEmpty()) {
+                        lastKnownUrl = currentUrl
+                        urlField.text = currentUrl
+                        addToHistory(currentUrl)
+                        updateActiveTabTitleFromUrl(currentUrl)
+                    }
                 }
-                
+
                 updateButtonStates()
             } catch (e: Exception) {
             }
@@ -313,12 +617,12 @@ class ViewPortBrowser(private val project: Project) : JPanel() {
     
     private fun loadUrl(urlString: String) {
         try {
-            browser.loadURL(urlString)
+            activeBrowser().loadURL(urlString)
             urlField.text = urlString
             lastKnownUrl = urlString
-            
+
             addToHistory(urlString)
-            
+            updateActiveTabTitleFromUrl(urlString)
         } catch (e: Exception) {
             val errorHtml = """
                 <html>
@@ -331,7 +635,7 @@ class ViewPortBrowser(private val project: Project) : JPanel() {
                 </body>
                 </html>
             """.trimIndent()
-            browser.loadHTML(errorHtml)
+            activeBrowser().loadHTML(errorHtml)
         }
     }
     
@@ -341,24 +645,25 @@ class ViewPortBrowser(private val project: Project) : JPanel() {
     }
     
     private fun goBack() {
-        if (browser.cefBrowser.canGoBack()) {
-            browser.cefBrowser.goBack()
+        if (activeBrowser().cefBrowser.canGoBack()) {
+            activeBrowser().cefBrowser.goBack()
         }
     }
-    
+
     private fun goForward() {
-        if (browser.cefBrowser.canGoForward()) {
-            browser.cefBrowser.goForward()
+        if (activeBrowser().cefBrowser.canGoForward()) {
+            activeBrowser().cefBrowser.goForward()
         }
     }
-    
+
     private fun reload() {
-        browser.cefBrowser.reload()
+        activeBrowser().cefBrowser.reload()
     }
-    
+
     private fun updateButtonStates() {
-        backButton.isEnabled = browser.cefBrowser.canGoBack()
-        forwardButton.isEnabled = browser.cefBrowser.canGoForward()
+        if (tabs.isEmpty()) return
+        backButton.isEnabled = activeBrowser().cefBrowser.canGoBack()
+        forwardButton.isEnabled = activeBrowser().cefBrowser.canGoForward()
     }
     
     private fun setupHistoryUI() {
@@ -674,9 +979,45 @@ class ViewPortBrowser(private val project: Project) : JPanel() {
         forwardPanel.add(forwardToggle, BorderLayout.EAST)
         
         contentPanel.add(forwardPanel)
-        
+        contentPanel.add(Box.createVerticalStrut(8))
+
+        val tabBarVisibilityPanel = JPanel(BorderLayout())
+        tabBarVisibilityPanel.maximumSize = Dimension(Int.MAX_VALUE, 30)
+        tabBarVisibilityPanel.preferredSize = Dimension(Int.MAX_VALUE, 30)
+        val tabBarLabel = JLabel("Show tab bar")
+        tabBarLabel.font = tabBarLabel.font.deriveFont(Font.PLAIN, 14f)
+        tabBarVisibilityPanel.add(tabBarLabel, BorderLayout.CENTER)
+        showTabBarToggle = JCheckBox()
+        showTabBarToggle.isSelected = settingsService.isShowTabBar()
+        showTabBarToggle.addActionListener {
+            settingsService.setShowTabBar(showTabBarToggle.isSelected)
+            if (!isHistoryMode) {
+                showBrowser()
+            }
+        }
+        tabBarVisibilityPanel.add(showTabBarToggle, BorderLayout.EAST)
+        contentPanel.add(tabBarVisibilityPanel)
+        contentPanel.add(Box.createVerticalStrut(8))
+
+        val bookmarksVisibilityPanel = JPanel(BorderLayout())
+        bookmarksVisibilityPanel.maximumSize = Dimension(Int.MAX_VALUE, 30)
+        bookmarksVisibilityPanel.preferredSize = Dimension(Int.MAX_VALUE, 30)
+        val bookmarksBarLabel = JLabel("Show bookmarks bar")
+        bookmarksBarLabel.font = bookmarksBarLabel.font.deriveFont(Font.PLAIN, 14f)
+        bookmarksVisibilityPanel.add(bookmarksBarLabel, BorderLayout.CENTER)
+        showBookmarksBarToggle = JCheckBox()
+        showBookmarksBarToggle.isSelected = settingsService.isShowBookmarksBar()
+        showBookmarksBarToggle.addActionListener {
+            settingsService.setShowBookmarksBar(showBookmarksBarToggle.isSelected)
+            if (!isHistoryMode) {
+                showBrowser()
+            }
+        }
+        bookmarksVisibilityPanel.add(showBookmarksBarToggle, BorderLayout.EAST)
+        contentPanel.add(bookmarksVisibilityPanel)
+
         contentPanel.add(Box.createVerticalGlue())
-        
+
         settingsPanel.add(contentPanel, BorderLayout.CENTER)
     }
     
@@ -713,14 +1054,15 @@ class ViewPortBrowser(private val project: Project) : JPanel() {
     }
     
     private fun openDevTools() {
+        val jb = activeBrowser()
         try {
-            browser.openDevtools()
+            jb.openDevtools()
         } catch (e: Exception) {
             try {
-                val devTools = browser.cefBrowser.devTools
+                val devTools = jb.cefBrowser.devTools
                 val devToolsBrowser = JBCefBrowser.createBuilder()
                     .setCefBrowser(devTools)
-                    .setClient(browser.jbCefClient)
+                    .setClient(jb.jbCefClient)
                     .build()
                 
                 val frame = JFrame("ViewPort DevTools")
@@ -748,7 +1090,7 @@ class ViewPortBrowser(private val project: Project) : JPanel() {
         revalidate()
         repaint()
         
-        browser.component.requestFocusInWindow()
+        activeBrowser().component.requestFocusInWindow()
     }
 
     private fun showOptionsMenu() {
@@ -779,7 +1121,7 @@ class ViewPortBrowser(private val project: Project) : JPanel() {
 
     private fun openCreateBookmarkFlow() {
         val url = try {
-            browser.cefBrowser.url?.takeIf { it.isNotEmpty() } ?: urlField.text.trim()
+            activeBrowser().cefBrowser.url?.takeIf { it.isNotEmpty() } ?: urlField.text.trim()
         } catch (_: Exception) {
             urlField.text.trim()
         }.trim()
@@ -814,6 +1156,10 @@ class ViewPortBrowser(private val project: Project) : JPanel() {
         if (::searchEngineCombo.isInitialized) {
             searchEngineCombo.selectedItem = settingsService.getSearchEngine()
         }
+        if (::showTabBarToggle.isInitialized) {
+            showTabBarToggle.isSelected = settingsService.isShowTabBar()
+            showBookmarksBarToggle.isSelected = settingsService.isShowBookmarksBar()
+        }
 
         removeAll()
         add(settingsPanel, BorderLayout.CENTER)
@@ -829,10 +1175,17 @@ class ViewPortBrowser(private val project: Project) : JPanel() {
         return historyService.getEntries()
     }
     
-    fun dispose() {
+    override fun dispose() {
         if (::urlCheckTimer.isInitialized) {
             urlCheckTimer.stop()
         }
+        tabs.toList().forEach { tab ->
+            try {
+                tab.dispose()
+            } catch (_: Exception) {
+            }
+        }
+        tabs.clear()
     }
 }
 
