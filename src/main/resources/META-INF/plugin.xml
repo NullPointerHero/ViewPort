@@ -23,6 +23,9 @@
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
+        <applicationService serviceImplementation="de.robin.alvarez.viewport.bookmarks.ViewPortBookmarkService"/>
+        <applicationService serviceImplementation="de.robin.alvarez.viewport.history.ViewPortHistoryService"/>
+        <applicationService serviceImplementation="de.robin.alvarez.viewport.settings.ViewPortSettingsService"/>
         <toolWindow id="ViewPort Browser" 
                    secondary="true"
                    icon="AllIcons.General.Web"
