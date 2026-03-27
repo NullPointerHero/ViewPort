@@ -9,7 +9,7 @@ import com.intellij.openapi.wm.ex.ToolWindowManagerEx
 class ViewPortToolbarAction : AnAction() {
     
     override fun actionPerformed(e: AnActionEvent) {
-        val project = e.getRequiredData(CommonDataKeys.PROJECT)
+        val project = e.getProject() ?: return
         openBrowser(project)
     }
     

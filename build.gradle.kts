@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "de.robin.alvarez"
-version = "1.0.5"
+version = "1.0.6"
 
 repositories {
     mavenCentral()
@@ -18,7 +18,8 @@ repositories {
 // Read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html
 dependencies {
     intellijPlatform {
-        create("IC", "2025.2")
+        // Ab 2025.3: einheitliche IDEA-Distribution — IC/ideaIC für 2026.x nicht mehr veröffentlicht
+        intellijIdea("2026.1")
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
 
         // Add necessary plugin dependencies for compilation here, example:
@@ -29,12 +30,18 @@ dependencies {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "252"
+            sinceBuild = "261"
         }
 
         changeNotes = """
       ViewPort Plugin - Ein eingebetteter Web-Browser für IntelliJ IDEA
     """.trimIndent()
+    }
+
+    pluginVerification {
+        ides {
+            create(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdea, "2026.1")
+        }
     }
 }
 

@@ -1058,27 +1058,12 @@ class ViewPortBrowser(private val project: Project) : JPanel(), Disposable {
         try {
             jb.openDevtools()
         } catch (e: Exception) {
-            try {
-                val devTools = jb.cefBrowser.devTools
-                val devToolsBrowser = JBCefBrowser.createBuilder()
-                    .setCefBrowser(devTools)
-                    .setClient(jb.jbCefClient)
-                    .build()
-                
-                val frame = JFrame("ViewPort DevTools")
-                frame.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
-                frame.size = Dimension(1200, 800)
-                frame.setLocationRelativeTo(null)
-                frame.add(devToolsBrowser.component)
-                frame.isVisible = true
-            } catch (ex: Exception) {
-                JOptionPane.showMessageDialog(
-                    this,
-                    "Could not open DevTools: ${ex.message}",
-                    "DevTools Error",
-                    JOptionPane.ERROR_MESSAGE
-                )
-            }
+            JOptionPane.showMessageDialog(
+                this,
+                "Could not open DevTools: ${e.message}",
+                "DevTools Error",
+                JOptionPane.ERROR_MESSAGE
+            )
         }
     }
     
